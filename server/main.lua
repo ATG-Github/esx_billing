@@ -1,39 +1,85 @@
+-- ~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~= --
+--		   	   Created By: indilo53 AKA GiZz              --
+--			 Protected By: ATG-Github AKA ATG			  --
+-- ~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~= --
+
 ESX = nil
 
 TriggerEvent('esx:getSharedObject', function(obj) ESX = obj end)
 
+local societies = {}
+
+AddEventHandler("esx_society:registerSociety", function(n, label, a)
+	local name, account = n, a;
+    local tbl = {
+        ["name"] = name,
+        ["account"] = account,
+    }
+	local exists = false;
+
+    for _, i in pairs(societies) do
+        if i.name == name then
+            exists, i = true, tbl
+            break
+        end
+    end
+
+    if exists == false then
+		societies[#societies+1] = tbl
+    end
+end)
+
+function findSociety(account)
+    for _, i in pairs(societies) do
+        if i["account"] == account then
+            return i
+        end
+    end
+end
+
 RegisterServerEvent('esx_billing:sendBill')
-AddEventHandler('esx_billing:sendBill', function(playerId, sharedAccountName, label, amount)
-	local xPlayer = ESX.GetPlayerFromId(source)
-	local xTarget = ESX.GetPlayerFromId(playerId)
+AddEventHandler('esx_billing:sendBill', function(target, sharedAccountName, label, amount)
+	local src, tgt = source;
+	local xPlayer, xTarget = ESX.GetPlayerFromId(src), ESX.GetPlayerFromId(target)
 	amount = ESX.Math.Round(amount)
 
 	if amount > 0 and xTarget then
-		TriggerEvent('esx_addonaccount:getSharedAccount', sharedAccountName, function(account)
-			if account then
-				MySQL.Async.execute('INSERT INTO billing (identifier, sender, target_type, target, label, amount) VALUES (@identifier, @sender, @target_type, @target, @label, @amount)', {
-					['@identifier'] = xTarget.identifier,
-					['@sender'] = xPlayer.identifier,
-					['@target_type'] = 'society',
-					['@target'] = sharedAccountName,
-					['@label'] = label,
-					['@amount'] = amount
-				}, function(rowsChanged)
-					xTarget.showNotification(_U('received_invoice'))
-				end)
-			else
-				MySQL.Async.execute('INSERT INTO billing (identifier, sender, target_type, target, label, amount) VALUES (@identifier, @sender, @target_type, @target, @label, @amount)', {
-					['@identifier'] = xTarget.identifier,
-					['@sender'] = xPlayer.identifier,
-					['@target_type'] = 'player',
-					['@target'] = xPlayer.identifier,
-					['@label'] = label,
-					['@amount'] = amount
-				}, function(rowsChanged)
-					xTarget.showNotification(_U('received_invoice'))
-				end)
-			end
-		end)
+
+		local society = findSociety(sharedAccountName)
+		if xPlayer.job.name == society.name then
+			TriggerEvent('esx_addonaccount:getSharedAccount', sharedAccountName, function(account)
+				if account then
+					MySQL.Async.execute('INSERT INTO billing (identifier, sender, target_type, target, label, amount) VALUES (@identifier, @sender, @target_type, @target, @label, @amount)', {
+						['@identifier'] = xTarget.identifier,
+						['@sender'] = xPlayer.identifier,
+						['@target_type'] = 'society',
+						['@target'] = sharedAccountName,
+						['@label'] = label,
+						['@amount'] = amount
+					}, function(rowsChanged)
+						xTarget.showNotification(_U('received_invoice'))
+					end)
+				else
+					MySQL.Async.execute('INSERT INTO billing (identifier, sender, target_type, target, label, amount) VALUES (@identifier, @sender, @target_type, @target, @label, @amount)', {
+						['@identifier'] = xTarget.identifier,
+						['@sender'] = xPlayer.identifier,
+						['@target_type'] = 'player',
+						['@target'] = xPlayer.identifier,
+						['@label'] = label,
+						['@amount'] = amount
+					}, function(rowsChanged)
+						xTarget.showNotification(_U('received_invoice'))
+					end)
+				end
+			end)
+		else
+			print(
+				string.format(
+					"^2%s^7 -> [^1%s^7] ^1%s^7 has attempted to send a bill to [^5%s^7] ^5%s^7 from the ^2%s^7 via the society but, the player was not in the society job.",
+					GetCurrentResourceName(), src, GetPlayerName(src), tgt, GetPlayerName(tgt), society.name
+				)
+			)
+		end
 	end
 end)
 
